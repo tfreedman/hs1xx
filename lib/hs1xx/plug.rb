@@ -10,16 +10,15 @@ module HS1xx
     end
 
     def on
-      send_to_plug(:system => {:set_relay_state => {:state => 1}})
+      send_to_plug('{"system": {"set_relay_state": {"state": 1}}}')
     end
 
     def off
-      send_to_plug(:system => {:set_relay_state => {:state => 0}})
+      send_to_plug('{"system": {"set_relay_state": {"state": 0}}}')
     end
 
     def on?
-      status = send_to_plug(:system => {:get_sysinfo => {}})
-      status['system']['get_sysinfo']['relay_state'] == 1
+      send_to_plug('{"system": {"get_sysinfo": {}}}')['system']['get_sysinfo']['relay_state'] == 1
     end
 
     def off?
@@ -29,10 +28,21 @@ module HS1xx
     private
 
     def send_to_plug(payload)
-      payload = payload.to_json
-      socket = TCPSocket.new(@ip_address, 9999)
-      socket.puts(encrypt(payload))
-      decrypt(socket.gets)
+      socket = Socket.tcp(@ip_address, 9999)
+      socket.write(encrypt(payload))
+      string = ''
+      while (string << socket.getc) do
+        begin
+          if string.length > 5
+            output = JSON.parse(decrypt(string))
+            break
+          end
+        rescue JSON::ParserError => e
+          # not real JSON - fetch more data
+        end
+      end
+      socket.close
+      return output
     ensure
       socket.close rescue nil
     end
@@ -55,8 +65,7 @@ module HS1xx
         array << (b ^ key)
         key = b
       end
-      result = array.pack('C*')
-      JSON.parse(result)
+      array.pack('C*')
     end
   end
 end
